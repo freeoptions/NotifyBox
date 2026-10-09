@@ -1,0 +1,74 @@
+{
+  "format": "notifybox",
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "id": "example-dismiss",
+      "name": "示例：短信延迟消除",
+      "enabled": false,
+      "schemaVersion": 1,
+      "applications": [
+        {
+          "packageName": "com.example.sms",
+          "userId": 0
+        }
+      ],
+      "textCondition": {
+        "fields": [
+          "TITLE",
+          "TEXT"
+        ],
+        "operator": "ANY",
+        "values": [],
+        "ignoreCase": true
+      },
+      "actions": [
+        {
+          "type": "dismiss",
+          "delayMs": 4000,
+          "includeOngoing": false
+        }
+      ],
+      "migrationIssues": []
+    },
+    {
+      "id": "example-forward",
+      "name": "示例：短信转发",
+      "enabled": false,
+      "schemaVersion": 1,
+      "applications": [
+        {
+          "packageName": "com.example.sms",
+          "userId": 0
+        }
+      ],
+      "textCondition": {
+        "fields": [
+          "TITLE",
+          "TEXT"
+        ],
+        "operator": "NOT_CONTAINS",
+        "values": [
+          "点按即可了解详情或停止应用"
+        ],
+        "ignoreCase": true
+      },
+      "actions": [
+        {
+          "type": "webhook",
+          "profileId": "telegram-example",
+          "dedupEnabled": true,
+          "dedupWindowSeconds": 5
+        }
+      ],
+      "migrationIssues": []
+    }
+  ],
+  "profiles": [
+    {
+      "id": "telegram-example",
+      "name": "示例 Telegram（请补填）",
+      "kind": "TELEGRAM"
+    }
+  ]
+}
