@@ -9,15 +9,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.notifybox.core.*
 import io.github.notifybox.data.NotificationRow
 import kotlinx.serialization.decodeFromString
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun RecordsScreen(vm: AppViewModel, detail: (String) -> Unit) {
+    val choices by rememberApplicationChoices(vm)
     var keyword by rememberSaveable { mutableStateOf("") }
     var app by rememberSaveable { mutableStateOf("") }
     var rule by rememberSaveable { mutableStateOf("") }
@@ -30,11 +35,14 @@ fun RecordsScreen(vm: AppViewModel, detail: (String) -> Unit) {
     val codes = remember(status) { listOf("PENDING", "SENDING", "SUCCESS", "FAILED", "UNKNOWN", "DEDUP", "SKIPPED", "CANCELLED", "STALE", "REQUESTED", "REMOVED", "MISSING").filter { statusLabel(it).contains(status, true) } }
     val query = remember(keyword, app, rule, status, page) { vm.repository.recordQuery(keyword, app, rule, codes, status.isNotBlank(), page) }
     val countQuery = remember(keyword, app, rule, status) { vm.repository.recordQuery(keyword, app, rule, codes, status.isNotBlank(), 0, count = true) }
-    val rows by remember(query) { vm.repository.dao.notificationPage(query) }.collectAsStateWithLifecycle(emptyList())
+    // 行与解析内容在同一次 Flow 更新中绑定；LazyColumn 不能再用新行查询旧内容表。
+    val entries by remember(query) {
+        vm.repository.dao.notificationPage(query).map(::recordListItems).flowOn(Dispatchers.Default)
+    }.collectAsStateWithLifecycle(emptyList())
     val count by remember(countQuery) { vm.repository.dao.notificationCount(countQuery) }.collectAsStateWithLifecycle(-1)
-    val logs by remember(rows.map { it.id }) { vm.repository.dao.pageActions(rows.map { it.id }) }.collectAsStateWithLifecycle(emptyList())
+    val recordIds = entries.map { it.row.id }
+    val logs by remember(recordIds) { vm.repository.dao.pageActions(recordIds) }.collectAsStateWithLifecycle(emptyList())
     LaunchedEffect(count) { if (count >= 0 && page > ((count - 1).coerceAtLeast(0) / 20)) page = (count - 1).coerceAtLeast(0) / 20 }
-    val snapshots = remember(rows) { rows.associate { it.id to RuleJson.decodeFromString<NotificationSnapshot>(it.snapshotJson) } }
     val statuses = remember(logs) { logs.groupBy { it.notificationId }.mapValues { (_, values) -> values.distinctBy { it.ruleName to it.action }.map { statusLabel(it.status) }.distinct() } }
     LazyColumn(Modifier.fillMaxSize().background(NotifyColors.background), state = listState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { PageIntro("通知记录", "") }
@@ -48,15 +56,26 @@ fun RecordsScreen(vm: AppViewModel, detail: (String) -> Unit) {
                 TextButton(onClick = { app = ""; rule = ""; status = ""; keyword = ""; toPage(0) }) { Text("清除筛选") }
             }
         }
-        if (rows.isEmpty()) item { EmptyCard("暂无记录", "没有符合条件的通知") }
-        items(rows, key = { it.id }) { row ->
-            val n = snapshots.getValue(row.id)
-            SectionCard(n.appName + " · " + eventLabel(row.kind), onClick = { detail(row.id) }) {
-                Text(timeLabel(row.createdAt), style = MaterialTheme.typography.labelMedium)
-                Text(n.title.ifEmpty { "（标题为空）" }, style = MaterialTheme.typography.titleSmall)
-                Text(n.text.ifEmpty { "（正文为空）" }, maxLines = 4)
+        if (entries.isEmpty()) item { EmptyCard("暂无记录", "没有符合条件的通知") }
+        items(entries, key = { it.row.id }) { entry ->
+            val row = entry.row
+            val n = entry.snapshot
+            if (n == null) {
+                SectionCard("记录内容无法读取") {
+                    Text(timeLabel(row.createdAt), style = MaterialTheme.typography.labelMedium)
+                    Text("这条记录的格式异常，其他记录仍可查看。")
+                }
+                return@items
+            }
+            val recordStatuses = statuses[row.id].orEmpty()
+            val appName = targetCaption(ApplicationTarget(n.packageName, n.userId), choices, n.appName)
+            SectionCard(appName, onClick = { detail(row.id) },
+                titleLeading = { ApplicationIcon(n.packageName, n.appName) }) {
+                Text(timeLabel(row.createdAt) + " · " + eventLabel(row.kind), style = MaterialTheme.typography.labelMedium)
+                if (n.title.isNotBlank()) Text(n.title, style = MaterialTheme.typography.titleSmall)
+                if (n.text.isNotBlank()) Text(n.text, maxLines = 4)
                 if (row.matchedNames.isNotBlank()) Text("命中：" + row.matchedNames, color = MaterialTheme.colorScheme.primary)
-                if (statuses[row.id].orEmpty().isNotEmpty()) Text(statuses[row.id]!!.joinToString(" · "), style = MaterialTheme.typography.labelMedium)
+                if (recordStatuses.isNotEmpty()) Text(recordStatuses.joinToString(" · "), style = MaterialTheme.typography.labelMedium)
             }
         }
         item { PageControls(page, count, ::toPage) }
@@ -67,22 +86,21 @@ fun RecordsScreen(vm: AppViewModel, detail: (String) -> Unit) {
 @Composable
 fun RecordDetail(vm: AppViewModel, row: NotificationRow, back: () -> Unit, create: () -> Unit) {
     val n = remember(row) { RuleJson.decodeFromString<NotificationSnapshot>(row.snapshotJson) }
+    val choices by rememberApplicationChoices(vm)
     val actions by remember(row.id) { vm.repository.dao.observeActions(row.id) }.collectAsStateWithLifecycle(emptyList())
     val tasks by remember(row.id) { vm.repository.dao.observeTasksForNotification(row.id) }.collectAsStateWithLifecycle(emptyList())
-    val visibleActions = remember(actions, tasks) { actions.filter { log ->
-        log.action != "转发" || log.status == "DEDUP" || tasks.none { it.ruleName == log.ruleName }
-    } }
+    val process = remember(n, actions, tasks) { recordProcessNodes(n, actions, tasks) }
     val rules by vm.rules.collectAsStateWithLifecycle()
     var results by remember { mutableStateOf<List<TrialResult>?>(null) }
     var delete by remember { mutableStateOf(false) }
     Scaffold(topBar = { NotifyTopBar(title = "通知详情", onBack = back) }) { padding ->
         LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item {
-                SectionCard(n.appName + " · " + eventLabel(row.kind)) {
-                    Text(n.title.ifEmpty { "（标题为空）" })
-                    Text(n.text.ifEmpty { "（正文为空）" })
-                    Text("收到：" + timeLabel(n.receivedAt) + "\n发送：" + timeLabel(n.postedAt))
-                    if (row.matchedNames.isNotBlank()) Text("命中：" + row.matchedNames)
+                SectionCard(targetCaption(ApplicationTarget(n.packageName, n.userId), choices, n.appName),
+                    titleLeading = { ApplicationIcon(n.packageName, n.appName) }) {
+                    if (n.title.isNotBlank()) Text(n.title)
+                    if (n.text.isNotBlank()) Text(n.text)
+                    if (row.matchedNames.isNotBlank()) Text("命中规则：" + row.matchedNames, color = MaterialTheme.colorScheme.primary)
                 }
             }
             item {
@@ -97,22 +115,7 @@ fun RecordDetail(vm: AppViewModel, row: NotificationRow, back: () -> Unit, creat
                     trial.forEach { r -> Text(r.name + "：" + (if (r.matched) "匹配" else "不匹配") + if (r.issues.isNotEmpty()) " · " + r.issues.joinToString("；") else "") }
                 } }
             }
-            item { Text("动作记录", style = MaterialTheme.typography.titleMedium) }
-            if (visibleActions.isEmpty() && tasks.isEmpty()) item { Text("没有动作记录") }
-            items(visibleActions, key = { it.id }) { log ->
-                SectionCard(if (log.ruleName.isBlank()) log.action else log.ruleName + " · " + log.action) {
-                    Text(statusLabel(log.status) + " · " + timeLabel(log.createdAt))
-                    Text(log.summary)
-                }
-            }
-            if (tasks.isNotEmpty()) item { SectionCard("转发当前状态") {
-                tasks.forEach { task ->
-                    Text(task.profileName + " · " + statusLabel(task.status) + "\n" + task.summary)
-                    Text("已尝试 ${task.attempts} 次" +
-                        (if (task.lastAttemptAt == 0L) "" else " · 上次：" + timeLabel(task.lastAttemptAt)) +
-                        (if (task.status == "PENDING") "\n下次：" + timeLabel(task.nextRunAt) else ""), style = MaterialTheme.typography.bodySmall)
-                }
-            } }
+            item { RecordProcessCard(process) }
             item { TextButton(onClick = { delete = true }) { Text("删除这条记录") } }
         }
     }
@@ -120,4 +123,19 @@ fun RecordDetail(vm: AppViewModel, row: NotificationRow, back: () -> Unit, creat
         text = { Text("转发队列会保留，不撤回已发送内容。") },
         confirmButton = { TextButton(onClick = { delete = false; vm.launch("记录已删除", back) { vm.repository.deleteRecord(row.id) } }) { Text("删除") } },
         dismissButton = { TextButton(onClick = { delete = false }) { Text("取消") } })
+}
+
+@Composable
+fun RecordProcessCard(nodes: List<RecordProcessNode>) {
+    SectionCard("处理过程") {
+        nodes.forEachIndexed { index, node ->
+            if (index > 0) HorizontalDivider(color = NotifyColors.line)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(node.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                    color = if (node.attention) MaterialTheme.colorScheme.error else NotifyColors.ink)
+                if (node.at != null) Text(timeLabel(node.at), style = MaterialTheme.typography.labelMedium, color = NotifyColors.muted)
+                if (node.detail.isNotBlank()) Text(node.detail, style = MaterialTheme.typography.bodySmall, color = NotifyColors.muted)
+            }
+        }
+    }
 }

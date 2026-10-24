@@ -3,12 +3,14 @@
 package io.github.notifybox.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.notifybox.core.*
@@ -17,11 +19,11 @@ import java.math.BigDecimal
 
 @Composable
 fun ApplicationTags(targets: List<ApplicationTarget>, choices: List<AppChoice>, onRemove: (Int) -> Unit, onAdd: () -> Unit) {
-    val names = remember(choices) { choices.associate { it.packageName to it.name } }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         targets.forEachIndexed { index, target ->
-            val name = names[target.packageName] ?: target.packageName
-            RemovableTag(targetCaption(target, name), { onRemove(index) }) { ApplicationIcon(target.packageName, name) }
+            RemovableTag(targetCaption(target, choices), { onRemove(index) }) {
+                ApplicationIcon(target.packageName, choices.firstOrNull { it.packageName == target.packageName }?.name ?: target.packageName)
+            }
         }
         AddTag("添加应用", onAdd)
     }
@@ -67,8 +69,15 @@ fun KeywordEditor(
 fun RuleActionsEditor(
     ruleId: String, revision: Int, actions: List<RuleAction>, profiles: List<ProfileRow>,
     onUpdate: (Int, RuleAction) -> Unit, onRemove: (Int) -> Unit, onAdd: (RuleAction) -> Unit,
+    onToggleKind: (Boolean, Boolean) -> Unit,
     openProfile: ((String) -> Unit)? = null,
 ) {
+    val dismissSelected = actions.any { it is DismissAction }
+    val forwardSelected = actions.any { it is WebhookAction }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        ActionKindCheckbox("消除", dismissSelected) { onToggleKind(true, it) }
+        ActionKindCheckbox("转发", forwardSelected) { onToggleKind(false, it) }
+    }
     if (actions.isEmpty()) Text("选择匹配通知后要做的事。", color = NotifyColors.muted)
     actions.forEachIndexed { index, action ->
         key(revision, index) {
@@ -97,7 +106,7 @@ fun RuleActionsEditor(
                             ChoiceMenu("发送到", action.profileId, profiles.map { it.id to (it.name + if (it.configCipher.isEmpty()) " · 待补填" else "") }, {
                                 onUpdate(index, action.copy(profileId = it))
                             })
-                            if (profiles.none { it.id == action.profileId }) Text(if (profiles.isEmpty()) "请先在“转发”中创建 Telegram 或 Webhook 配置。" else "原配置已不存在，请重新选择。",
+                            if (profiles.none { it.id == action.profileId }) Text(if (profiles.isEmpty()) "请点击下方新建转发配置，或在“转发”右上角齿轮中添加通道。" else "原配置已不存在，请重新选择。",
                                 color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                             if (openProfile != null) {
                                 val hasProfile = profiles.any { it.id == action.profileId }
@@ -117,8 +126,17 @@ fun RuleActionsEditor(
         }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        AddTag("消除通知", { onAdd(DismissAction()) })
-        AddTag("转发消息", { onAdd(WebhookAction(profiles.firstOrNull()?.id.orEmpty())) })
+        if (dismissSelected) AddTag("再添加消除动作", { onAdd(DismissAction()) })
+        if (forwardSelected) AddTag("再添加转发动作", { onAdd(WebhookAction(profiles.firstOrNull()?.id.orEmpty())) })
+    }
+}
+
+@Composable
+private fun ActionKindCheckbox(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.toggleable(value = checked, role = Role.Checkbox, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Text(label, Modifier.padding(end = 12.dp), color = NotifyColors.ink)
     }
 }
 
@@ -127,11 +145,11 @@ fun millisecondsFromSeconds(value: String): Long = runCatching { value.toBigDeci
 
 @Composable
 fun RuleOverview(rule: Rule, choices: List<AppChoice>, profileNames: Map<String, String>) {
-    val names = remember(choices) { choices.associate { it.packageName to it.name } }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (rule.applications.isEmpty()) SummaryTag("未选择应用")
         rule.applications.take(4).forEach { target ->
-            SummaryTag(targetCaption(target, names[target.packageName] ?: target.packageName))
+            val label = targetCaption(target, choices)
+            SummaryTag(label) { ApplicationIcon(target.packageName, label, size = 22.dp) }
         }
         if (rule.applications.size > 4) SummaryTag("另 ${rule.applications.size - 4} 个")
     }
@@ -146,10 +164,14 @@ fun RuleOverview(rule: Rule, choices: List<AppChoice>, profileNames: Map<String,
 }
 
 @Composable
-private fun SummaryTag(label: String) {
+private fun SummaryTag(label: String, leading: (@Composable () -> Unit)? = null) {
     Surface(color = NotifyColors.blueTint, shape = RoundedCornerShape(16.dp)) {
-        Text(label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = NotifyColors.inkSoft,
-            style = MaterialTheme.typography.labelMedium, maxLines = 2,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            leading?.invoke()
+            Text(label, Modifier.weight(1f, fill = false), color = NotifyColors.inkSoft,
+                style = MaterialTheme.typography.labelMedium, maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
     }
 }

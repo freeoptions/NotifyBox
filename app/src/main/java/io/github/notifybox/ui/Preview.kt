@@ -6,11 +6,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.notifybox.core.ApplicationTarget
+import io.github.notifybox.core.Rule
 import io.github.notifybox.core.WebhookAction
 import io.github.notifybox.data.ProfileRow
+import io.github.notifybox.data.TaskRow
 
 // 供 Android Studio 静态预览使用。示例数据不会写入实际规则或数据库。
 @Preview(showBackground = true, widthDp = 393, heightDp = 700, name = "规则页面组件")
@@ -18,17 +21,72 @@ import io.github.notifybox.data.ProfileRow
 private fun RulesPreview() {
     NotifyBoxTheme {
         Surface(color = NotifyColors.background) {
+            Box(Modifier.fillMaxSize()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                PageIntro("通知规则", "1 条已启用 · 按应用和文本匹配")
-                PrimaryAction("新建规则", {}, showAddIcon = true)
+                PageIntro("通知规则", "")
+                ListFilterTabs(listOf("" to "全部", "DISMISS" to "消除", "FORWARD" to "转发"), "") {}
+                FormField("搜索名称、拼音或包名", "", {}, singleLine = true)
                 SectionCard("短信转发", enabledState = true) {
-                    Text("短信 · 主应用")
-                    Text("排除系统运行提示")
-                    Text("Telegram 转发 · 去重 5 秒", color = MaterialTheme.colorScheme.primary)
+                    RuleOverview(Rule(name = "短信转发", applications = listOf(ApplicationTarget("com.example.sms")),
+                        actions = listOf(WebhookAction("preview-profile"))),
+                        listOf(AppChoice("com.example.sms", "短信")), mapOf("preview-profile" to "Telegram"))
                     ToggleRow("启用规则", true, {})
                     Row { TextButton(onClick = {}) { Text("编辑") }; TextButton(onClick = {}) { Text("试跑") } }
                 }
                 EmptyCard("本地运行", "转发任务先写入队列，消除不会取消转发。")
+            }
+            AddFloatingButton({}, "新建规则", Modifier.align(Alignment.BottomEnd).padding(20.dp))
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 393, heightDp = 850, name = "转发记录消息内容")
+@Preview(showBackground = true, widthDp = 320, heightDp = 850, fontScale = 1.3f, name = "窄屏大字号转发内容")
+@Composable
+private fun ForwardingContentPreview() {
+    val task = TaskRow(id = "preview", notificationId = "", ruleId = "", ruleName = "订单通知",
+        profileId = "", profileName = "订单", packageName = "sample.app", userId = 0,
+        requestCipher = "", dedupKey = "", status = "SUCCESS", createdAt = 0, nextRunAt = 0,
+        attempts = 1, summary = "发送成功")
+    NotifyBoxTheme {
+        Surface(color = NotifyColors.background) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                ForwardingHeader({})
+                ListFilterTabs(listOf("" to "全部", "FAILED" to "失败", "SUCCESS" to "成功"), "") {}
+                ForwardingTaskCard(task, "新订单提醒\n示例商品已下单，请及时处理。", {}, {}, {})
+                ForwardingTaskCard(task.copy(id = "preview-retry", status = "PENDING", attempts = 3,
+                    summary = "网络连接超时，等待重试"),
+                    "配送状态更新\n您的订单已送达，请留意查收。", {}, {}, {})
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 393, heightDp = 900, name = "通知处理关键节点")
+@Preview(showBackground = true, widthDp = 320, heightDp = 900, fontScale = 1.3f, name = "窄屏大字号通知处理")
+@Composable
+private fun RecordProcessPreview() {
+    val published = 1_791_809_414_000L
+    val collected = published + 428_000L
+    NotifyBoxTheme {
+        Surface(color = NotifyColors.background) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                PageIntro("通知详情", "")
+                SectionCard("短信") {
+                    Text("物流通知")
+                    Text("您的包裹已送达，请及时查收。")
+                    Text("命中规则：短信转发", color = MaterialTheme.colorScheme.primary)
+                }
+                RecordProcessCard(listOf(
+                    RecordProcessNode("通知发布", published),
+                    RecordProcessNode("NotifyBox 采集", collected),
+                    RecordProcessNode("转发成功", collected + 500, "Telegram"),
+                    RecordProcessNode("请求消除", collected + 5000, "短信转发"),
+                    RecordProcessNode("通知已移除", collected + 5100),
+                ))
             }
         }
     }
@@ -80,7 +138,7 @@ private fun ReferenceRuleEditorPreview() {
                 }
                 EditorSection("规则效果", "转发消息") {
                     RuleActionsEditor("preview", 0, listOf(WebhookAction("preview-profile")),
-                        listOf(ProfileRow("preview-profile", "我的消息机器人", "TELEGRAM", "preview-placeholder")), { _, _ -> }, {}, {})
+                        listOf(ProfileRow("preview-profile", "我的消息机器人", "TELEGRAM", "preview-placeholder")), { _, _ -> }, {}, {}, { _, _ -> })
                 }
                 EditorSection("更多设置", "大小写与用户标识", initiallyExpanded = false) {
                     ToggleRow("忽略英文字母大小写", true, {})

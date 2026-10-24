@@ -1,9 +1,17 @@
 package io.github.notifybox.worker
 
 import android.content.Context
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.pm.ServiceInfo
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import io.github.notifybox.appGraph
+import io.github.notifybox.R
+import io.github.notifybox.listener.BackgroundService
 import io.github.notifybox.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +43,17 @@ import java.security.cert.CertificateException
 
 class WebhookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     private var claimedAttempt: Int? = null
+    // Android 12 以前，加急 WorkManager 任务需要前台兼容实现。
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val manager = applicationContext.getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(NotificationChannel("delivery_progress", "消息转发", NotificationManager.IMPORTANCE_LOW))
+        val notification = NotificationCompat.Builder(applicationContext, "delivery_progress")
+            .setSmallIcon(R.drawable.ic_notifybox).setContentTitle("NotifyBox 正在转发消息")
+            .setOngoing(true).setSilent(true).setContentIntent(BackgroundService.openApp(applicationContext)).build()
+        val notificationId = 2000 + (id.hashCode() and 0x3fffffff)
+        return if (Build.VERSION.SDK_INT >= 29) ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            else ForegroundInfo(notificationId, notification)
+    }
     override suspend fun doWork(): Result {
         try { return deliver() } catch (e: CancellationException) {
             withContext(NonCancellable + Dispatchers.IO) {

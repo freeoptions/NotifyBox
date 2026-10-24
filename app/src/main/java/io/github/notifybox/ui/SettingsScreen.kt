@@ -7,7 +7,6 @@ import android.provider.Settings
 import android.app.ActivityManager
 import android.os.Build
 import android.os.PowerManager
-import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -35,7 +34,6 @@ fun SettingsScreen(vm: AppViewModel) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current
     var granted by remember { mutableStateOf(context.packageName in NotificationManagerCompat.getEnabledListenerPackages(context)) }
-    var notificationsAllowed by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
     var batteryAllowed by remember { mutableStateOf((context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(context.packageName)) }
     var backgroundAllowed by remember { mutableStateOf(Build.VERSION.SDK_INT < 28 || !(context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as ActivityManager).isBackgroundRestricted) }
     var exportTree by remember { mutableStateOf(vm.repository.exportTree()) }
@@ -44,7 +42,6 @@ fun SettingsScreen(vm: AppViewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 granted = context.packageName in NotificationManagerCompat.getEnabledListenerPackages(context)
-                notificationsAllowed = NotificationManagerCompat.from(context).areNotificationsEnabled()
                 batteryAllowed = (context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(context.packageName)
                 backgroundAllowed = Build.VERSION.SDK_INT < 28 || !(context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as ActivityManager).isBackgroundRestricted
                 exportAvailable = ExportStorage.available(context, exportTree)
@@ -63,9 +60,6 @@ fun SettingsScreen(vm: AppViewModel) {
     var importBusy by remember { mutableStateOf(false) }
     var retryContinuously by remember { mutableStateOf(vm.repository.continuousRetry()) }
     var proxy by remember { mutableStateOf(vm.repository.proxyAddress()) }
-    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        notificationsAllowed = NotificationManagerCompat.from(context).areNotificationsEnabled()
-    }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.launch {
             val source = context.contentResolver.openInputStream(uri)?.use { stream ->
@@ -101,10 +95,6 @@ fun SettingsScreen(vm: AppViewModel) {
         ThemeSettings(vm)
         SectionCard("权限与后台运行") {
             PermissionItem("通知访问", granted) { openSettings(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
-            PermissionItem("通知提醒", notificationsAllowed) {
-                if (Build.VERSION.SDK_INT >= 33 && !notificationsAllowed) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                else openSettings(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-            }
             PermissionItem("忽略电池优化", batteryAllowed) {
                 openSettings(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + context.packageName)))
             }
@@ -135,7 +125,7 @@ fun SettingsScreen(vm: AppViewModel) {
             ToggleRow("网络故障持续重试", retryContinuously, {
                 retryContinuously = it; vm.repository.setContinuousRetry(it)
             })
-            Text("失败时通知提醒；重试间隔逐步增加，最长 30 分钟，服务端要求更久时按其等待。超时后重发可能重复接收，凭证错误需修正后手动重试。", style = MaterialTheme.typography.bodySmall)
+            Text("允许通知时，失败会发出提醒；重试间隔逐步增加，最长 30 分钟，服务端要求更久时按其等待。超时后重发可能重复接收，凭证错误需修正后手动重试。", style = MaterialTheme.typography.bodySmall)
             if (!retryContinuously) Text("关闭后，明确未发送的故障最多尝试 3 次；接收结果未知时需手动重试。", style = MaterialTheme.typography.bodySmall)
         }
         SectionCard("本地数据") {

@@ -22,16 +22,20 @@ class NotificationCollector : NotificationListenerService() {
     override fun onListenerConnected() {
         ListenerState.connection(true)
         appGraph.processor.connect(this)
+        // 系统可在界面未打开时独立绑定监听；后台服务也必须随之恢复。
+        BackgroundService.start(this)
     }
     override fun onListenerDisconnected() {
         ListenerState.connection(false)
         appGraph.processor.disconnect(this)
+        BackgroundService.start(this)
         BackgroundService.requestListener(this)
     }
     override fun onDestroy() {
         ListenerState.connection(false)
         appGraph.processor.disconnect(this)
         super.onDestroy()
+        BackgroundService.requestListener(this)
     }
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return

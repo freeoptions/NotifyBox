@@ -97,7 +97,10 @@ fun NotifyBoxRoot(vm: AppViewModel = viewModel()) {
             }) {
             composable("rules") { RulesScreen(vm, { nav.navigate("rule/new") }, { nav.navigate("rule/" + it) }, { nav.navigate("trial/" + it) }) }
             composable("records") { RecordsScreen(vm) { nav.navigate("record/" + it) } }
-            composable("forwarding") { ForwardingScreen(vm, { nav.navigate("profile/new") }, { nav.navigate("profile/" + it) }) }
+            composable("forwarding") { ForwardingScreen(vm) { nav.navigate("profiles") } }
+            composable("profiles") {
+                ForwardingChannelsScreen(vm, { nav.popBackStack() }, { nav.navigate("profile/new") }, { nav.navigate("profile/" + it) })
+            }
             composable("settings") { SettingsScreen(vm) }
             composable("rule/{id}") { back ->
                 val id = back.arguments?.getString("id").orEmpty()

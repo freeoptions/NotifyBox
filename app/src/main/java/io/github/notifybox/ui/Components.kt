@@ -29,17 +29,36 @@ fun PageIntro(title: String, subtitle: String) {
     }
 }
 @Composable
-fun SectionCard(title: String, enabledState: Boolean? = null, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+fun ListFilterTabs(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    TabRow(selectedTabIndex = options.indexOfFirst { it.first == selected }.coerceAtLeast(0),
+        containerColor = Color.Transparent, contentColor = NotifyColors.blue) {
+        options.forEach { (value, label) ->
+            Tab(selected = selected == value, onClick = { onSelect(value) }, text = { Text(label) },
+                selectedContentColor = NotifyColors.blue, unselectedContentColor = NotifyColors.muted)
+        }
+    }
+}
+@Composable
+fun AddFloatingButton(onClick: () -> Unit, description: String, modifier: Modifier = Modifier) {
+    FloatingActionButton(onClick = onClick, modifier = modifier,
+        containerColor = NotifyColors.blue, contentColor = Color.White, shape = RoundedCornerShape(18.dp)) {
+        Icon(painterResource(R.drawable.ic_add), contentDescription = description, modifier = Modifier.size(24.dp))
+    }
+}
+@Composable
+fun SectionCard(title: String, enabledState: Boolean? = null, onClick: (() -> Unit)? = null,
+    titleLeading: (@Composable () -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     Card(Modifier.fillMaxWidth().then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)),
         shape = RoundedCornerShape(if (enabledState == null) 20.dp else 22.dp),
         border = BorderStroke(1.dp, NotifyColors.line),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(containerColor = if (enabledState == false) NotifyColors.disabled else Color.White)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (title.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (enabledState != null) Box(Modifier.width(4.dp).height(22.dp).clip(RoundedCornerShape(4.dp))
                     .background(if (enabledState) NotifyColors.blueTint else NotifyColors.muted.copy(alpha = .35f)))
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = NotifyColors.ink)
+                titleLeading?.invoke()
+                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = NotifyColors.ink)
             }
             content()
         }
@@ -103,7 +122,7 @@ fun FormField(label: String, value: String, onChange: (String) -> Unit, singleLi
             focusedLabelColor = NotifyColors.blue, unfocusedLabelColor = NotifyColors.muted))
 }
 fun timeLabel(millis: Long): String = SimpleDateFormat("MM-dd HH:mm:ss", Locale.CHINA).format(Date(millis))
-fun userLabel(id: Int?) = when (id) { null -> "所有用户"; 0 -> "主应用 · 0"; 999 -> "用户 999 · 分身待验证"; else -> "用户 " + id }
+fun userLabel(id: Int?) = when (id) { null -> "所有用户"; 0 -> "主应用 · 0"; else -> "用户 " + id }
 fun statusLabel(status: String): String = when (status) {
     "PENDING" -> "待处理"; "SENDING" -> "发送中"; "SUCCESS" -> "成功"; "FAILED" -> "失败"; "UNKNOWN" -> "结果未知"
     "DEDUP" -> "已去重"; "SKIPPED" -> "已跳过"; "CANCELLED" -> "已取消"; "STALE" -> "内容已更新"

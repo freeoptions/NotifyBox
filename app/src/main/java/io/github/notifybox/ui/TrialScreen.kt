@@ -34,8 +34,8 @@ fun TrialScreen(vm: AppViewModel, rule: Rule, back: () -> Unit) {
                         RadioButton(selected == row.id, { selected = row.id })
                         Column(Modifier.weight(1f)) {
                             Text(n.appName + " · " + timeLabel(row.createdAt))
-                            Text(n.title.ifEmpty { "（标题为空）" })
-                            Text(n.text, maxLines = 2)
+                            if (n.title.isNotBlank()) Text(n.title)
+                            if (n.text.isNotBlank()) Text(n.text, maxLines = 2)
                         }
                     }
                 }

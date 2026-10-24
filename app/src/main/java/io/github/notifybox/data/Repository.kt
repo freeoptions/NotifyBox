@@ -152,7 +152,7 @@ class Repository(val db: NotifyDatabase, val vault: SecretVault, private val con
                 deliveryAction(task!!, "PENDING", "已写入本地队列")
             }
         }
-        task?.let { QueueScheduler.schedule(context, it.id, it.nextRunAt) }
+        // 调用方可能还处于外层通知事务中；必须等整条通知提交后再调度 Worker。
         return task
     }
     suspend fun testProfile(id: String) {

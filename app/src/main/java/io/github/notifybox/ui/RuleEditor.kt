@@ -54,6 +54,7 @@ fun RuleEditor(vm: AppViewModel, original: Rule, profiles: List<ProfileRow>, bac
     LaunchedEffect(error) { if (error != null) scroll.animateScrollTo(0) }
     val loaded by vm.applicationsLoaded.collectAsStateWithLifecycle()
     val choices by rememberApplicationChoices(vm, targets)
+    LaunchedEffect(picker) { if (picker) vm.loadApplications(refresh = true) }
     val dirty = name != original.name || enabled != original.enabled || appsJson != initialApps ||
         keywordsJson != initialKeywords || keywordInput.isNotEmpty() || unrestricted != original.textCondition.values.isEmpty() ||
         opName != original.textCondition.operator.name ||
@@ -121,7 +122,13 @@ fun RuleEditor(vm: AppViewModel, original: Rule, profiles: List<ProfileRow>, bac
                     onRemove = { index ->
                         actionsJson = RuleJson.encodeToString(actions.filterIndexed { i, _ -> i != index }); actionRevision++
                     },
-                    onAdd = { action -> actionsJson = RuleJson.encodeToString(actions + action) }, openProfile = openProfile)
+                    onAdd = { action -> actionsJson = RuleJson.encodeToString(actions + action) },
+                    onToggleKind = { dismiss, selected ->
+                        val updated = if (selected) actions + if (dismiss) DismissAction() else WebhookAction(profiles.firstOrNull()?.id.orEmpty())
+                            else actions.filterNot { if (dismiss) it is DismissAction else it is WebhookAction }
+                        actionsJson = RuleJson.encodeToString(updated)
+                        actionRevision++
+                    }, openProfile = openProfile)
             }
             EditorSection("更多设置", "大小写与用户标识", initiallyExpanded = false) {
                 ToggleRow("忽略英文字母大小写", ignoreCase, { ignoreCase = it })

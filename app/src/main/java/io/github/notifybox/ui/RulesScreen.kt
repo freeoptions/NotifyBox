@@ -8,8 +8,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.notifybox.core.DismissAction
+import io.github.notifybox.core.WebhookAction
 
 @Composable
 fun RulesScreen(vm: AppViewModel, add: () -> Unit, edit: (String) -> Unit, trial: (String) -> Unit) {
@@ -17,32 +20,39 @@ fun RulesScreen(vm: AppViewModel, add: () -> Unit, edit: (String) -> Unit, trial
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val choices by rememberApplicationChoices(vm)
     var query by rememberSaveable { mutableStateOf("") }
+    var actionFilter by rememberSaveable { mutableStateOf("") }
     var deleteId by remember { mutableStateOf<String?>(null) }
     val names = remember(choices) { choices.associate { it.packageName to it.name } }
     val profileNames = remember(profiles) { profiles.associate { it.id to it.name } }
-    val filtered = remember(rules, names, query) { rules.filter { rule ->
-        SearchIndex.matches(rule.name, query) || SearchIndex.matches(ruleSummary(rule), query) ||
-            rule.applications.any { SearchIndex.matches(names[it.packageName] ?: it.packageName, query) }
-    } }
-    LazyColumn(Modifier.fillMaxSize().background(NotifyColors.background), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { PageIntro("通知规则", "") }
-        item {
-            PrimaryAction("新建规则", add, showAddIcon = true)
+    val filtered = remember(rules, names, query, actionFilter) { rules.filter { rule ->
+        val matchesAction = when (actionFilter) {
+            "DISMISS" -> rule.actions.any { it is DismissAction }
+            "FORWARD" -> rule.actions.any { it is WebhookAction }
+            else -> true
         }
-        item { FormField("搜索名称、拼音或包名", query, { query = it }, singleLine = true) }
-        if (filtered.isEmpty()) item { EmptyCard(if (rules.isEmpty()) "还没有规则" else "没有匹配结果", "新建规则，或到设置导入 JSON。新规则默认关闭。") }
-        items(filtered, key = { it.id }) { rule ->
-            SectionCard(rule.name, enabledState = rule.enabled) {
-                RuleOverview(rule, choices, profileNames)
-                if (rule.migrationIssues.isNotEmpty()) Text("导入待确认 · " + rule.migrationIssues.size + " 项", color = MaterialTheme.colorScheme.error)
-                ToggleRow("启用规则", rule.enabled, { enabled -> vm.launch { vm.repository.setEnabled(rule.id, enabled) } })
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { edit(rule.id) }) { Text("编辑") }
-                    TextButton(onClick = { trial(rule.id) }) { Text("试跑") }
-                    TextButton(onClick = { deleteId = rule.id }) { Text("删除") }
+        matchesAction && (SearchIndex.matches(rule.name, query) || SearchIndex.matches(ruleSummary(rule), query) ||
+            rule.applications.any { SearchIndex.matches(names[it.packageName] ?: it.packageName, query) })
+    } }
+    Box(Modifier.fillMaxSize().background(NotifyColors.background)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            item { PageIntro("通知规则", "") }
+            item { ListFilterTabs(listOf("" to "全部", "DISMISS" to "消除", "FORWARD" to "转发"), actionFilter) { actionFilter = it } }
+            item { FormField("搜索名称、拼音或包名", query, { query = it }, singleLine = true) }
+            if (filtered.isEmpty()) item { EmptyCard(if (rules.isEmpty()) "还没有规则" else "没有匹配结果", "点击右下角新建规则，或到设置导入 JSON。") }
+            items(filtered, key = { it.id }) { rule ->
+                SectionCard(rule.name, enabledState = rule.enabled) {
+                    RuleOverview(rule, choices, profileNames)
+                    if (rule.migrationIssues.isNotEmpty()) Text("导入待确认 · " + rule.migrationIssues.size + " 项", color = MaterialTheme.colorScheme.error)
+                    ToggleRow("启用规则", rule.enabled, { enabled -> vm.launch { vm.repository.setEnabled(rule.id, enabled) } })
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { edit(rule.id) }) { Text("编辑") }
+                        TextButton(onClick = { trial(rule.id) }) { Text("试跑") }
+                        TextButton(onClick = { deleteId = rule.id }) { Text("删除") }
+                    }
                 }
             }
         }
+        AddFloatingButton(add, "新建规则", Modifier.align(Alignment.BottomEnd).padding(20.dp))
     }
     if (deleteId != null) AlertDialog(onDismissRequest = { deleteId = null }, title = { Text("删除这条规则？") },
         text = { Text("已排队的转发任务会保留。") },

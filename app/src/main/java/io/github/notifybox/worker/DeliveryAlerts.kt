@@ -18,6 +18,6 @@ object DeliveryAlerts {
             .setContentText("请检查代理节点与转发配置；打开转发页查看待处理任务")
             .setOnlyAlertOnce(true).setAutoCancel(true).setContentIntent(BackgroundService.openApp(context)).build()
         try { NotificationManagerCompat.from(context).notify(1002, notification) }
-        catch (_: SecurityException) { /* 设置页显示通知权限状态。 */ }
+        catch (_: SecurityException) { /* 通知提醒是可选权限；发送结果仍保留在转发记录中。 */ }
     }
 }

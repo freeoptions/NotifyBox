@@ -19,9 +19,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val installedApps = MutableStateFlow<List<AppChoice>>(emptyList())
     val applicationsLoaded = MutableStateFlow(false)
     private var loadingApplications = false
-    fun loadApplications() {
-        if (applicationsLoaded.value || loadingApplications) return
+    fun loadApplications(refresh: Boolean = false) {
+        if ((!refresh && applicationsLoaded.value) || loadingApplications) return
         loadingApplications = true
+        applicationsLoaded.value = false
         viewModelScope.launch {
             try {
                 installedApps.value = withContext(Dispatchers.IO) { ApplicationCatalog.load(getApplication<Application>()) }
