@@ -3,6 +3,7 @@ package io.github.notifybox.data
 import android.content.Context
 import androidx.room.withTransaction
 import io.github.notifybox.core.*
+import io.github.notifybox.worker.DeliveryAlerts
 import io.github.notifybox.worker.QueueScheduler
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -217,6 +218,7 @@ class Repository(val db: NotifyDatabase, val vault: SecretVault, private val con
             val outcome = DeliveryPolicy.retryable(DeliveryOutcome(TaskStatus.UNKNOWN, "上次发送中断，接收结果未知"), it.attempts, continuousRetry())
             val updated = it.copy(status = outcome.status.name, nextRunAt = System.currentTimeMillis() + (outcome.retryAfterSeconds ?: 0) * 1000, summary = outcome.summary)
             dao.updateTask(updated); deliveryAction(updated, updated.status, updated.summary)
+            DeliveryAlerts.failed(context, updated.attempts, outcome.status)
         }
         while (true) {
             val batch = dao.unindexedNotifications()

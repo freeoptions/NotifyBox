@@ -2,6 +2,10 @@
 
 package io.github.notifybox.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,6 +41,7 @@ fun KeywordEditor(
     onMode: (String) -> Unit, onInput: (String) -> Unit, onAdd: () -> Unit, onRemove: (Int) -> Unit,
     title: Boolean, text: Boolean, onTitle: (Boolean) -> Unit, onText: (Boolean) -> Unit,
 ) {
+    val context = LocalContext.current
     ChoiceMenu("关键词", if (unrestricted) "UNLIMITED" else opName,
         listOf("UNLIMITED" to "所有内容", "ANY" to "包含任一", "ALL" to "包含全部",
             "NOT_CONTAINS" to "不包含任一", "CONTAINS" to "包含一个", "REGEX" to "正则任一"), onMode)
@@ -47,7 +53,15 @@ fun KeywordEditor(
             else -> "包含下面的关键词时匹配"
         }, color = NotifyColors.muted, style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            keywords.forEachIndexed { index, keyword -> RemovableTag(keyword, { onRemove(index) }) }
+            keywords.forEachIndexed { index, keyword ->
+                RemovableTag(keyword, { onRemove(index) }, onLongClick = {
+                    context.getSystemService(ClipboardManager::class.java)
+                        .setPrimaryClip(ClipData.newPlainText("关键词", keyword))
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                        Toast.makeText(context, "关键词已复制", Toast.LENGTH_SHORT).show()
+                    }
+                })
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(input, onInput, modifier = Modifier.weight(1f), singleLine = true,

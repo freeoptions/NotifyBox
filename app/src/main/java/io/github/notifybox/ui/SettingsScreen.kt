@@ -125,7 +125,7 @@ fun SettingsScreen(vm: AppViewModel) {
             ToggleRow("网络故障持续重试", retryContinuously, {
                 retryContinuously = it; vm.repository.setContinuousRetry(it)
             })
-            Text("允许通知时，失败会发出提醒；重试间隔逐步增加，最长 30 分钟，服务端要求更久时按其等待。超时后重发可能重复接收，凭证错误需修正后手动重试。", style = MaterialTheme.typography.bodySmall)
+            Text("允许通知时，同一任务总共尝试 3 次仍未成功才提醒一次，后续重试不重复提醒。重试间隔逐步增加，最长 30 分钟，服务端要求更久时按其等待。超时后重发可能重复接收，凭证错误需修正后手动重试。", style = MaterialTheme.typography.bodySmall)
             if (!retryContinuously) Text("关闭后，明确未发送的故障最多尝试 3 次；接收结果未知时需手动重试。", style = MaterialTheme.typography.bodySmall)
         }
         SectionCard("本地数据") {

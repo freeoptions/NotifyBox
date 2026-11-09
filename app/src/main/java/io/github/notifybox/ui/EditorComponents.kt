@@ -1,9 +1,10 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package io.github.notifybox.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -69,8 +70,12 @@ fun <T> ChoiceMenu(label: String, selected: T, choices: List<Pair<T, String>>, o
 }
 
 @Composable
-fun RemovableTag(label: String, onRemove: () -> Unit, leading: (@Composable () -> Unit)? = null) {
-    Surface(shape = RoundedCornerShape(24.dp), color = NotifyColors.blueTint, modifier = Modifier.widthIn(max = 320.dp)) {
+fun RemovableTag(label: String, onRemove: () -> Unit, onLongClick: (() -> Unit)? = null, leading: (@Composable () -> Unit)? = null) {
+    val copyModifier = if (onLongClick != null) Modifier.combinedClickable(
+        onClick = {}, onLongClickLabel = "复制关键词", onLongClick = onLongClick,
+    ) else Modifier
+    Surface(shape = RoundedCornerShape(24.dp), color = NotifyColors.blueTint,
+        modifier = Modifier.widthIn(max = 320.dp).then(copyModifier)) {
         Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (leading != null) { leading(); Spacer(Modifier.width(8.dp)) }
             Text(label, Modifier.weight(1f, fill = false), color = NotifyColors.ink, style = MaterialTheme.typography.bodyMedium)

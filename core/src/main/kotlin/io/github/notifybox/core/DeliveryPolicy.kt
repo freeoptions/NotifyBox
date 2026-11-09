@@ -2,6 +2,10 @@ package io.github.notifybox.core
 
 data class DeliveryOutcome(val status: TaskStatus, val summary: String, val retryAfterSeconds: Long? = null)
 object DeliveryPolicy {
+    // attempts 包含首次发送；只在第三次仍未成功时提醒，后续持续重试不重复打扰。
+    fun shouldAlert(attempts: Int, status: TaskStatus): Boolean =
+        attempts == 3 && status in setOf(TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.UNKNOWN)
+
     fun retryDelay(attempts: Int): Long = (30L * (1L shl (attempts - 1).coerceIn(0, 6))).coerceAtMost(1800)
     fun retryable(outcome: DeliveryOutcome, attempts: Int, continuous: Boolean): DeliveryOutcome =
         if (continuous && outcome.status == TaskStatus.UNKNOWN)

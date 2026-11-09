@@ -64,6 +64,7 @@ class WebhookWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                     val outcome = DeliveryPolicy.retryable(DeliveryOutcome(TaskStatus.UNKNOWN, "后台发送中断，接收结果未知"), task.attempts, repo.continuousRetry())
                     val updated = task.copy(status = outcome.status.name, nextRunAt = System.currentTimeMillis() + (outcome.retryAfterSeconds ?: 0) * 1000, summary = outcome.summary)
                     repo.dao.updateTask(updated); repo.deliveryAction(updated, updated.status, updated.summary)
+                    DeliveryAlerts.failed(applicationContext, updated.attempts, outcome.status)
                     if (updated.status == "PENDING") QueueScheduler.schedule(applicationContext, updated.id, updated.nextRunAt)
                 }
             }
@@ -146,7 +147,7 @@ class WebhookWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             nextRunAt = now + (result.retryAfterSeconds ?: 0) * 1000, summary = result.summary)
         repo.dao.updateTask(updated)
         repo.deliveryAction(updated, updated.status, updated.summary)
-        if (result.status != TaskStatus.SUCCESS) DeliveryAlerts.failed(applicationContext)
+        DeliveryAlerts.failed(applicationContext, updated.attempts, result.status)
         if (result.status == TaskStatus.PENDING) QueueScheduler.schedule(applicationContext, id, updated.nextRunAt)
         Result.success()
     }

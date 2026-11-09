@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DeliveryPolicyTest {
+    @Test fun deliveryAlertOnlyOccursOnThirdUnsuccessfulAttempt() {
+        for (status in listOf(TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.UNKNOWN)) {
+            assertFalse(DeliveryPolicy.shouldAlert(1, status))
+            assertFalse(DeliveryPolicy.shouldAlert(2, status))
+            assertTrue(DeliveryPolicy.shouldAlert(3, status))
+            assertFalse(DeliveryPolicy.shouldAlert(4, status))
+            assertFalse(DeliveryPolicy.shouldAlert(100, status))
+        }
+        assertFalse(DeliveryPolicy.shouldAlert(3, TaskStatus.SUCCESS))
+        assertFalse(DeliveryPolicy.shouldAlert(3, TaskStatus.SENDING))
+    }
+
     @Test fun continuousRetryKeepsAmbiguousRequestInSameQueueUntilRecovery() {
         val timeout = DeliveryOutcome(TaskStatus.UNKNOWN, "连接超时")
         assertEquals(TaskStatus.PENDING, DeliveryPolicy.retryable(timeout, 100, true).status)
